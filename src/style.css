@@ -21,6 +21,33 @@ body {
   min-height: 100vh;
 }
 
+.shell {
+  width: min(900px, 100%);
+}
+
+.top-nav {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.nav-link {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #94a3b8;
+  background: #ffffffd8;
+  color: #0f172a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.nav-link.router-link-active {
+  background: #0f766e;
+  color: #fff;
+  border-color: #0f766e;
+}
+
 .panel {
   width: min(820px, 100%);
   background: #ffffffcc;
@@ -95,7 +122,16 @@ button:disabled {
   word-break: break-word;
 }
 
+.result.upload {
+  min-height: 130px;
+  margin-bottom: 14px;
+}
+
 @media (max-width: 640px) {
+  .page {
+    align-items: flex-start;
+  }
+
   .panel {
     padding: 16px;
     border-radius: 14px;
