@@ -3,8 +3,11 @@ import { ref } from 'vue'
 
 const userId = ref('default')
 const resumeFile = ref(null)
+const resumeFiles = ref([])
 const uploading = ref(false)
 const uploadResult = ref('')
+const batchUploading = ref(false)
+const batchUploadResult = ref('')
 const resumeQuery = ref('这位候选人的核心技术栈是什么？')
 const querying = ref(false)
 const queryResult = ref('')
@@ -12,6 +15,11 @@ const queryResult = ref('')
 function onFileChange(event) {
   const files = event.target.files
   resumeFile.value = files && files.length > 0 ? files[0] : null
+}
+
+function onFilesChange(event) {
+  const files = event.target.files
+  resumeFiles.value = files ? Array.from(files) : []
 }
 
 async function uploadResume() {
@@ -60,6 +68,62 @@ async function uploadResume() {
     uploadResult.value = `错误: ${error.message}`
   } finally {
     uploading.value = false
+  }
+}
+
+async function uploadResumes() {
+  if (!resumeFiles.value.length) {
+    batchUploadResult.value = '请先选择多个文件'
+    return
+  }
+
+  batchUploading.value = true
+  batchUploadResult.value = ''
+
+  try {
+    const params = new URLSearchParams({
+      userId: userId.value
+    })
+    const formData = new FormData()
+    for (const file of resumeFiles.value) {
+      formData.append('files', file)
+    }
+
+    const resp = await fetch(`/api/documents/upload-resumes?${params.toString()}`, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!resp.ok) {
+      let message = `批量上传失败: ${resp.status}`
+      try {
+        const err = await resp.json()
+        if (err && err.message) {
+          message = err.message
+        }
+      } catch (_) {
+        // ignore parse error
+      }
+      throw new Error(message)
+    }
+
+    const data = await resp.json()
+    const uploaded = data.uploaded ?? []
+    const skipped = data.skipped ?? []
+    const uploadedLines = uploaded.map((item, idx) => `${idx + 1}. ${item.fileName} (分片:${item.segmentCount})`)
+    const skippedLines = skipped.map((item, idx) => `${idx + 1}. ${item.fileName} - ${item.reason}`)
+
+    batchUploadResult.value =
+      `批量上传完成\n` +
+      `用户: ${data.userId}\n` +
+      `成功: ${uploaded.length}\n` +
+      `跳过: ${skipped.length}\n\n` +
+      `成功列表:\n${uploadedLines.length ? uploadedLines.join('\n') : '无'}\n\n` +
+      `跳过列表:\n${skippedLines.length ? skippedLines.join('\n') : '无'}`
+  } catch (error) {
+    batchUploadResult.value = `错误: ${error.message}`
+  } finally {
+    batchUploading.value = false
   }
 }
 
@@ -127,6 +191,24 @@ async function queryResume() {
     </div>
 
     <pre class="result upload">{{ uploadResult || '上传结果会显示在这里...' }}</pre>
+
+    <label>
+      简历文件（多文件）
+      <input
+        accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip,application/x-zip-compressed,multipart/x-zip"
+        type="file"
+        multiple
+        @change="onFilesChange"
+      />
+    </label>
+
+    <div class="actions">
+      <button :disabled="batchUploading" @click="uploadResumes">
+        {{ batchUploading ? '批量上传中...' : '批量上传简历入库（支持 ZIP）' }}
+      </button>
+    </div>
+
+    <pre class="result upload">{{ batchUploadResult || '批量上传结果会显示在这里...' }}</pre>
 
     <label>
       简历问答
