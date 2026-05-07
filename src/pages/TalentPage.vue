@@ -116,13 +116,8 @@ async function analyzeStream() {
 
 <template>
   <section class="panel">
-    <h1>Talent Controller</h1>
+    <h1>Telent Center</h1>
     <p>对应后端接口：/api/talent/analyze 与 /api/talent/analyze/stream</p>
-
-    <label>
-      用户ID
-      <input v-model="userId" type="text" />
-    </label>
 
     <label>
       查询内容
