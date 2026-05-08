@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 const resumeFile = ref(null)
 const resumeFiles = ref([])
@@ -13,6 +13,8 @@ const queryResult = ref('')
 const resumes = ref([])
 const loadingResumes = ref(false)
 const listResult = ref('')
+
+const parsedQueryCards = computed(() => parseCandidateCards(queryResult.value))
 const deletingResumeId = ref(null)
 
 function onFileChange(event) {
@@ -200,6 +202,32 @@ async function deleteResume(resumeId) {
     deletingResumeId.value = null
   }
 }
+
+function parseCandidateCards(text) {
+  const raw = (text || '').trim()
+  if (!raw) return []
+  if (raw.includes('未在该用户简历中找到相关信息')) return []
+
+  const sections = raw
+    .split(/\n(?=\d+\.\s)/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  const cards = sections.map((section) => {
+    const normalized = section.replace(/^\d+\.\s*/, '')
+    const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
+    const card = { candidate: '', conclusion: '', evidence: '', download: '' }
+    for (const line of lines) {
+      if (line.startsWith('候选人：')) card.candidate = line.replace('候选人：', '').trim()
+      if (line.startsWith('结论：')) card.conclusion = line.replace('结论：', '').trim()
+      if (line.startsWith('证据：')) card.evidence = line.replace('证据：', '').trim()
+      if (line.startsWith('下载链接：')) card.download = line.replace('下载链接：', '').trim()
+    }
+    return card
+  }).filter((item) => item.candidate || item.conclusion || item.evidence || item.download)
+
+  return cards
+}
 </script>
 
 <template>
@@ -246,7 +274,15 @@ async function deleteResume(resumeId) {
         <div class="actions compact">
           <button :disabled="querying" @click="queryResume">{{ querying ? '查询中...' : 'AI 查询简历' }}</button>
         </div>
-        <pre class="result">{{ queryResult || '查询结果会显示在这里...' }}</pre>
+        <div v-if="parsedQueryCards.length" class="query-cards">
+          <article v-for="(card, idx) in parsedQueryCards" :key="idx" class="query-card">
+            <h3>{{ card.candidate || `候选人 ${idx + 1}` }}</h3>
+            <p><strong>结论：</strong>{{ card.conclusion || '未提取' }}</p>
+            <p><strong>证据：</strong>{{ card.evidence || '未提取' }}</p>
+            <p><strong>下载链接：</strong>{{ card.download || '无' }}</p>
+          </article>
+        </div>
+        <pre v-else class="result">{{ queryResult || '查询结果会显示在这里...' }}</pre>
       </article>
 
       <article class="card-block">

@@ -196,6 +196,28 @@ button:disabled {
   font-size: 18px;
 }
 
+.query-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.query-card {
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.query-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.query-card p {
+  margin: 6px 0;
+  color: #334155;
+}
+
 @media (max-width: 640px) {
   .page {
     align-items: flex-start;
