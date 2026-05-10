@@ -14,8 +14,153 @@ const resumes = ref([])
 const loadingResumes = ref(false)
 const listResult = ref('')
 
-const parsedQueryCards = computed(() => parseCandidateCards(queryResult.value))
 const deletingResumeId = ref(null)
+const renderedQueryMarkdown = computed(() => renderMarkdown(queryResult.value || ''))
+
+function escapeHtml(text) {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function renderInline(text) {
+  const escaped = escapeHtml(text)
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+}
+
+function renderTable(lines) {
+  if (lines.length < 2) {
+    return `<p>${renderInline(lines.join(' '))}</p>`
+  }
+
+  const header = lines[0].split('|').map((cell) => cell.trim()).filter(Boolean)
+  const alignLine = lines[1].split('|').map((cell) => cell.trim()).filter(Boolean)
+  const bodyLines = lines.slice(2)
+
+  if (!header.length || alignLine.length !== header.length) {
+    return `<p>${renderInline(lines.join(' '))}</p>`
+  }
+
+  const thead = `<thead><tr>${header.map((cell) => `<th>${renderInline(cell)}</th>`).join('')}</tr></thead>`
+  const tbodyRows = bodyLines
+    .map((line) => line.split('|').map((cell) => cell.trim()).filter(Boolean))
+    .filter((cells) => cells.length)
+    .map((cells) => {
+      const normalized = header.map((_, index) => cells[index] ?? '')
+      return `<tr>${normalized.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`
+    })
+    .join('')
+
+  return `<table>${thead}<tbody>${tbodyRows}</tbody></table>`
+}
+
+function renderMarkdown(md) {
+  const lines = md.replace(/\r\n/g, '\n').split('\n')
+  const html = []
+  let i = 0
+  let inCodeBlock = false
+  let codeBuffer = []
+  let listBuffer = []
+  let tableBuffer = []
+
+  function flushList() {
+    if (!listBuffer.length) return
+    html.push(`<ul>${listBuffer.map((item) => `<li>${renderInline(item)}</li>`).join('')}</ul>`)
+    listBuffer = []
+  }
+
+  function flushTable() {
+    if (!tableBuffer.length) return
+    html.push(renderTable(tableBuffer))
+    tableBuffer = []
+  }
+
+  while (i < lines.length) {
+    const rawLine = lines[i]
+    const line = rawLine.trim()
+
+    if (rawLine.startsWith('```')) {
+      flushList()
+      flushTable()
+      if (!inCodeBlock) {
+        inCodeBlock = true
+        codeBuffer = []
+      } else {
+        html.push(`<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`)
+        inCodeBlock = false
+        codeBuffer = []
+      }
+      i += 1
+      continue
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(rawLine)
+      i += 1
+      continue
+    }
+
+    if (!line) {
+      flushList()
+      flushTable()
+      i += 1
+      continue
+    }
+
+    if (line.includes('|')) {
+      tableBuffer.push(line)
+      i += 1
+      continue
+    }
+
+    flushTable()
+
+    if (line.startsWith('### ')) {
+      flushList()
+      html.push(`<h3>${renderInline(line.slice(4))}</h3>`)
+      i += 1
+      continue
+    }
+
+    if (line.startsWith('## ')) {
+      flushList()
+      html.push(`<h2>${renderInline(line.slice(3))}</h2>`)
+      i += 1
+      continue
+    }
+
+    if (line.startsWith('# ')) {
+      flushList()
+      html.push(`<h1>${renderInline(line.slice(2))}</h1>`)
+      i += 1
+      continue
+    }
+
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      listBuffer.push(line.slice(2))
+      i += 1
+      continue
+    }
+
+    flushList()
+    html.push(`<p>${renderInline(line)}</p>`)
+    i += 1
+  }
+
+  flushList()
+  flushTable()
+  if (inCodeBlock && codeBuffer.length) {
+    html.push(`<pre><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`)
+  }
+
+  return html.join('')
+}
 
 function onFileChange(event) {
   const files = event.target.files
@@ -149,7 +294,8 @@ async function queryResume() {
       throw new Error(message)
     }
 
-    queryResult.value = await resp.text()
+    const data = await resp.json()
+    queryResult.value = data.answer || ''
   } catch (error) {
     queryResult.value = `错误: ${error.message}`
   } finally {
@@ -203,31 +349,6 @@ async function deleteResume(resumeId) {
   }
 }
 
-function parseCandidateCards(text) {
-  const raw = (text || '').trim()
-  if (!raw) return []
-  if (raw.includes('未在该用户简历中找到相关信息')) return []
-
-  const sections = raw
-    .split(/\n(?=\d+\.\s)/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-
-  const cards = sections.map((section) => {
-    const normalized = section.replace(/^\d+\.\s*/, '')
-    const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean)
-    const card = { candidate: '', conclusion: '', evidence: '', download: '' }
-    for (const line of lines) {
-      if (line.startsWith('候选人：')) card.candidate = line.replace('候选人：', '').trim()
-      if (line.startsWith('结论：')) card.conclusion = line.replace('结论：', '').trim()
-      if (line.startsWith('证据：')) card.evidence = line.replace('证据：', '').trim()
-      if (line.startsWith('下载链接：')) card.download = line.replace('下载链接：', '').trim()
-    }
-    return card
-  }).filter((item) => item.candidate || item.conclusion || item.evidence || item.download)
-
-  return cards
-}
 </script>
 
 <template>
@@ -236,7 +357,7 @@ function parseCandidateCards(text) {
     <p>上传、查询与候选人简历列表</p>
 
     <div class="card-group">
-      <article class="card-block">
+      <article class="card-block query-block">
         <h2>上传</h2>
         <label>
           单文件上传
@@ -274,15 +395,8 @@ function parseCandidateCards(text) {
         <div class="actions compact">
           <button :disabled="querying" @click="queryResume">{{ querying ? '查询中...' : 'AI 查询简历' }}</button>
         </div>
-        <div v-if="parsedQueryCards.length" class="query-cards">
-          <article v-for="(card, idx) in parsedQueryCards" :key="idx" class="query-card">
-            <h3>{{ card.candidate || `候选人 ${idx + 1}` }}</h3>
-            <p><strong>结论：</strong>{{ card.conclusion || '未提取' }}</p>
-            <p><strong>证据：</strong>{{ card.evidence || '未提取' }}</p>
-            <p><strong>下载链接：</strong>{{ card.download || '无' }}</p>
-          </article>
-        </div>
-        <pre v-else class="result">{{ queryResult || '查询结果会显示在这里...' }}</pre>
+        <div v-if="queryResult" class="result markdown-body" v-html="renderedQueryMarkdown" />
+        <pre v-else class="result">查询结果会显示在这里...</pre>
       </article>
 
       <article class="card-block">

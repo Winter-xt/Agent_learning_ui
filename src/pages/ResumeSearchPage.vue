@@ -5,6 +5,7 @@ const userId = ref('default-user')
 const query = ref('候选人的核心技术栈是什么？')
 const querying = ref(false)
 const result = ref('')
+const trace = ref(null)
 
 const userIdKey = computed(() => {
   const encoder = new TextEncoder()
@@ -22,6 +23,7 @@ async function queryResume() {
 
   querying.value = true
   result.value = ''
+  trace.value = null
 
   try {
     const params = new URLSearchParams({
@@ -43,7 +45,9 @@ async function queryResume() {
       throw new Error(message)
     }
 
-    result.value = await resp.text()
+    const data = await resp.json()
+    result.value = data.answer || ''
+    trace.value = data.trace || null
   } catch (error) {
     result.value = `错误: ${error.message}`
   } finally {
@@ -78,5 +82,25 @@ async function queryResume() {
     </div>
 
     <pre class="result">{{ result || '查询结果会显示在这里...' }}</pre>
+
+    <section v-if="trace" class="trace-panel">
+      <div class="trace-header">
+        <h2>Trace</h2>
+        <span>{{ trace.totalElapsedMillis }} ms</span>
+      </div>
+      <div class="trace-meta">
+        <div><strong>traceId</strong>{{ trace.traceId }}</div>
+        <div><strong>intent</strong>{{ trace.intent }}</div>
+        <div><strong>rewrite</strong>{{ trace.originalQuery }} → {{ trace.rewrittenQuery }}</div>
+      </div>
+      <article v-for="step in trace.steps" :key="step.name" class="trace-step">
+        <div class="step-title">
+          <strong>{{ step.name }}</strong>
+          <span>{{ step.elapsedMillis }} ms</span>
+          <span v-if="step.tokenCount !== null && step.tokenCount !== undefined">{{ step.tokenCount }} tokens</span>
+        </div>
+        <pre>{{ JSON.stringify(step.data, null, 2) }}</pre>
+      </article>
+    </section>
   </section>
 </template>
